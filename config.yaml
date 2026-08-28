@@ -1,0 +1,37 @@
+data:
+  panel_path: "Finance/DATA/stock_price_panel.csv"
+  source_dir: "Finance/DATA/K"
+  stock_basic_path: "Finance/DATA/stock_basic.csv"
+  trade_cal_path: "Finance/DATA/trade_cal.csv"
+  exchange: "SSE"
+  prefer_panel: true
+  prefer_parquet: true
+
+preprocessing:
+  winsor_limits: [0.01, 0.01]
+  do_vol_zscore: true
+  rolling_window: null
+  min_stock_threshold_ratio: 0.05
+
+wavelet:
+  transform: "modwt"
+  wavelet: "db4"
+  levels: 6
+  k: 0.0
+  q_threshold: 0.82
+
+clustering:
+  inflation: 1.4
+  pruning_threshold: 0.05
+  use_gpu: true
+
+sweep:
+  inflations: [1.2, 1.4, 1.6, 1.8, 2.0, 2.2, 2.4, 2.6, 2.8]
+
+performance:
+  dtype: "float32"
+  gpu_ids: [0, 1, 2, 3]
+  multi_gpu_similarity: false
+  similarity_workers: 1
+  wavelet_workers: 1
+  mcl_backend: "cpu"
