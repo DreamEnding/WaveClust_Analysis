@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import Any
 
 import networkx as nx
@@ -63,22 +64,161 @@ def build_dense_waveclust_score(sim_mats: list[np.ndarray], *, k: float) -> np.n
     return np.maximum(score, score.T)
 
 
-def build_signed_dual_waveclust_score(sim_mats: list[np.ndarray], *, k: float, neg_weight: float) -> np.ndarray:
+def build_signed_dual_waveclust_score(
+    sim_mats: list[np.ndarray],
+    *,
+    k: float,
+    neg_weight: float,
+    reducer: str = "max",
+    layer_weighting: bool = True,
+    interaction: str = "sqrt",
+) -> np.ndarray:
     if len(sim_mats) < 2:
         raise ValueError("at least two WaveClust similarity matrices are required")
-    low = np.asarray(sim_mats[0], dtype=np.float32)
+    matrices = [np.asarray(matrix, dtype=np.float32) for matrix in sim_mats]
+    shape = matrices[0].shape
+    if len(shape) != 2 or shape[0] != shape[1] or any(matrix.shape != shape for matrix in matrices[1:]):
+        raise ValueError("all WaveClust similarity matrices must have the same square shape")
+    low = matrices[0]
     pos_low = np.maximum(low, 0.0)
     neg_low = np.maximum(-low, 0.0)
     score = np.zeros_like(pos_low, dtype=np.float32)
-    for high_level in range(1, len(sim_mats)):
-        high = np.asarray(sim_mats[high_level], dtype=np.float32)
+    reducer = str(reducer).strip().lower()
+    if reducer not in {"max", "mean", "median", "geometric"}:
+        raise ValueError(f"unsupported signed-dual reducer: {reducer}")
+    interaction = str(interaction).strip().lower()
+    if interaction != "sqrt":
+        raise ValueError(f"unsupported signed-dual interaction: {interaction}")
+    if not isinstance(layer_weighting, (bool, np.bool_)):
+        raise ValueError("layer_weighting must be boolean")
+    if not np.isfinite(float(k)) or float(k) < 0:
+        raise ValueError("k must be finite and non-negative")
+    if not np.isfinite(float(neg_weight)) or float(neg_weight) < 0:
+        raise ValueError("neg_weight must be finite and non-negative")
+    candidate_count = len(matrices) - 1
+    median_candidates = (
+        np.empty((candidate_count, *shape), dtype=np.float32)
+        if reducer == "median"
+        else None
+    )
+    if reducer == "geometric":
+        score.fill(1.0)
+    for high_level in range(1, len(matrices)):
+        high = matrices[high_level]
         pos_high = np.maximum(high, 0.0)
         neg_high = np.maximum(-high, 0.0)
         pos_raw = np.sqrt(pos_low * pos_high)
         neg_raw = np.sqrt(neg_low * neg_high) * float(neg_weight)
-        score = np.maximum(score, (pos_raw + neg_raw) * (float(k) * high_level + 1.0))
+        candidate = pos_raw + neg_raw
+        if layer_weighting:
+            candidate *= np.float32(float(k) * high_level + 1.0)
+        if reducer == "max":
+            np.maximum(score, candidate, out=score)
+        elif reducer == "mean":
+            score += candidate
+        elif reducer == "median":
+            assert median_candidates is not None
+            median_candidates[high_level - 1] = candidate
+        else:
+            score *= candidate
+    if reducer == "mean":
+        score /= np.float32(candidate_count)
+    elif reducer == "median":
+        assert median_candidates is not None
+        score = np.median(median_candidates, axis=0).astype(np.float32, copy=False)
+    elif reducer == "geometric":
+        score = np.power(score, np.float32(1.0 / candidate_count)).astype(np.float32, copy=False)
     np.fill_diagonal(score, 0.0)
     return np.maximum(score, score.T)
+
+
+@dataclass
+class SignedDualScoreCache:
+    """Reuse signed-dual interaction terms across several score reducers.
+
+    The cache is intended for a bounded batch such as Part 8's six
+    preregistered reducers at one wavelet level.  It stores one float32
+    ``detail × stock × stock`` tensor, trading bounded host memory for avoiding
+    repeated positive/negative splitting and square-root interactions.
+    """
+
+    interaction_terms: np.ndarray
+
+    def build(self, *, k: float, reducer: str, layer_weighting: bool) -> np.ndarray:
+        if not np.isfinite(float(k)) or float(k) < 0:
+            raise ValueError("k must be finite and non-negative")
+        reducer = str(reducer).strip().lower()
+        if reducer not in {"max", "mean", "median", "geometric"}:
+            raise ValueError(f"unsupported signed-dual reducer: {reducer}")
+        if not isinstance(layer_weighting, (bool, np.bool_)):
+            raise ValueError("layer_weighting must be boolean")
+        terms = self.interaction_terms
+        if terms.ndim != 3 or terms.shape[0] < 1 or terms.shape[1] != terms.shape[2]:
+            raise ValueError("signed-dual cache must contain detail × square-matrix terms")
+
+        detail_count = terms.shape[0]
+        score = np.zeros_like(terms[0], dtype=np.float32)
+        if reducer == "geometric":
+            score.fill(1.0)
+        weighted_candidate = np.empty_like(score) if layer_weighting else None
+        median_candidates = np.empty_like(terms) if reducer == "median" else None
+        for detail_index in range(detail_count):
+            candidate = terms[detail_index]
+            if weighted_candidate is not None:
+                np.multiply(
+                    candidate,
+                    np.float32(float(k) * (detail_index + 1) + 1.0),
+                    out=weighted_candidate,
+                )
+                candidate = weighted_candidate
+            if reducer == "max":
+                np.maximum(score, candidate, out=score)
+            elif reducer == "mean":
+                score += candidate
+            elif reducer == "median":
+                assert median_candidates is not None
+                median_candidates[detail_index] = candidate
+            else:
+                score *= candidate
+        if reducer == "mean":
+            score /= np.float32(detail_count)
+        elif reducer == "median":
+            assert median_candidates is not None
+            score = np.median(median_candidates, axis=0).astype(np.float32, copy=False)
+        elif reducer == "geometric":
+            score = np.power(score, np.float32(1.0 / detail_count)).astype(np.float32, copy=False)
+        np.fill_diagonal(score, 0.0)
+        return np.maximum(score, score.T)
+
+
+def build_signed_dual_score_cache(
+    sim_mats: list[np.ndarray],
+    *,
+    neg_weight: float,
+    interaction: str = "sqrt",
+) -> SignedDualScoreCache:
+    """Materialize unweighted signed interactions once for a reducer batch."""
+    if len(sim_mats) < 2:
+        raise ValueError("at least two WaveClust similarity matrices are required")
+    matrices = [np.asarray(matrix, dtype=np.float32) for matrix in sim_mats]
+    shape = matrices[0].shape
+    if len(shape) != 2 or shape[0] != shape[1] or any(matrix.shape != shape for matrix in matrices[1:]):
+        raise ValueError("all WaveClust similarity matrices must have the same square shape")
+    interaction = str(interaction).strip().lower()
+    if interaction != "sqrt":
+        raise ValueError(f"unsupported signed-dual interaction: {interaction}")
+    if not np.isfinite(float(neg_weight)) or float(neg_weight) < 0:
+        raise ValueError("neg_weight must be finite and non-negative")
+
+    low = matrices[0]
+    pos_low = np.maximum(low, 0.0)
+    neg_low = np.maximum(-low, 0.0)
+    terms = np.empty((len(matrices) - 1, *shape), dtype=np.float32)
+    for detail_index, high in enumerate(matrices[1:]):
+        pos_raw = np.sqrt(pos_low * np.maximum(high, 0.0))
+        neg_raw = np.sqrt(neg_low * np.maximum(-high, 0.0)) * float(neg_weight)
+        terms[detail_index] = pos_raw + neg_raw
+    return SignedDualScoreCache(interaction_terms=terms)
 
 
 def normalized_affinity(similarity: np.ndarray) -> np.ndarray:

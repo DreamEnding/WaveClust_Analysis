@@ -179,6 +179,15 @@ class StockWaveClust:
             matrices.append((matrix / norms).astype(np.float32, copy=False))
         return matrices, stock_names
 
+    def release_wavelet_coefficients(self) -> None:
+        """Release per-stock coefficient storage after level matrices are materialized.
+
+        This keeps ``prepare_level_matrices`` backward compatible for callers that
+        inspect coefficients, while allowing bounded batch runners to lower their
+        peak host-memory use before dense similarity construction.
+        """
+        self.coefficients.clear()
+
     def compute_similarity_matrix(self, matrix: np.ndarray, *, device_id: int | None = None) -> np.ndarray:
         if self.use_gpu and cp is not None:
             try:
