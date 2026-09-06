@@ -1,0 +1,11 @@
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.test-tmp/
+.coverage
+htmlcov/
+
+# Local data and experiment outputs are not distributed.
+DATA/
+output/
+outputs/

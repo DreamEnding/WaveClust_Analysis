@@ -67,7 +67,7 @@ def build_params(cfg: dict[str, Any], *, use_gpu: bool) -> WaveClustParams:
 def load_prices(cfg: dict[str, Any], *, start_date: str | None, end_date: str | None) -> pd.DataFrame:
     data = cfg.get("data", {})
     performance = cfg.get("performance", {})
-    panel_path = resolve_workspace_path(data.get("panel_path", "Finance/DATA/stock_price_panel.csv"))
+    panel_path = resolve_workspace_path(data.get("panel_path", "DATA/stock_price_panel.csv"))
     prefer_panel = bool(data.get("prefer_panel", True))
     if prefer_panel and panel_path.exists():
         return load_price_panel(
@@ -79,11 +79,11 @@ def load_prices(cfg: dict[str, Any], *, start_date: str | None, end_date: str | 
         )
 
     trade_dates = load_trade_calendar(
-        resolve_workspace_path(data.get("trade_cal_path", "Finance/DATA/trade_cal.csv")),
+        resolve_workspace_path(data.get("trade_cal_path", "DATA/trade_cal.csv")),
         exchange=str(data.get("exchange", "SSE")),
     )
     return load_prices_from_directory(
-        resolve_workspace_path(data.get("source_dir", "Finance/DATA/K")),
+        resolve_workspace_path(data.get("source_dir", "DATA/K")),
         trade_dates=trade_dates,
         start_date=start_date,
         end_date=end_date,
@@ -103,7 +103,7 @@ def run_experiment(
     cfg = load_config(config_path)
     params = build_params(cfg, use_gpu=use_gpu)
     prices = load_prices(cfg, start_date=start_date, end_date=end_date)
-    stock_info = load_stock_basic(resolve_workspace_path(cfg.get("data", {}).get("stock_basic_path", "Finance/DATA/stock_basic.csv")))
+    stock_info = load_stock_basic(resolve_workspace_path(cfg.get("data", {}).get("stock_basic_path", "DATA/stock_basic.csv")))
 
     model = StockWaveClust(prices=prices, stock_info=stock_info, params=params).fit()
     metrics = model.metrics()
@@ -151,7 +151,7 @@ def run_experiment(
             "config_path": config_path,
             "python": sys.version,
             "platform": platform.platform(),
-            "contract": "clean 4.29 WaveClust code only; MODWT/SWT levels configurable in [2, 6]; ARI/NMI limited to current clustered stocks",
+            "contract": "MODWT/SWT levels configurable in [1, 6]; ARI/NMI limited to current clustered stocks",
         },
     )
     print(pd.DataFrame([row]).to_string(index=False))

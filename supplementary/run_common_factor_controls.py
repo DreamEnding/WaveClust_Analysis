@@ -12,7 +12,7 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
-from run_rebuttal_part8 import environment_snapshot, write_json
+from supplementary.run_operator_ablation import environment_snapshot, write_json
 from waveclust.data import load_price_panel, load_stock_basic, normalize_stock_code
 from waveclust.dependence import rank_normalize_rows_for_spearman, summarize_cross_band_dependence
 from waveclust.factors import (
@@ -33,7 +33,7 @@ from waveclust.spectral import (
 )
 
 
-FINANCE_ROOT = Path(__file__).resolve().parent.parent
+REPOSITORY_ROOT = Path(__file__).resolve().parent.parent
 MAIN_BRANCHES = (
     "raw",
     "market_residual_internal",
@@ -53,18 +53,18 @@ class ResolvedPaths:
     stock_basic: Path
     shenwan_universe: Path
     archived_figure3_dir: Path
-    part8_baseline_gate: Path
+    operator_baseline_gate: Path
     output_dir: Path
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Run the preregistered Part 3 common-factor controls.")
-    parser.add_argument("--workspace-root", type=Path, default=FINANCE_ROOT)
+    parser = argparse.ArgumentParser(description="Run the supplementary common-factor controls.")
+    parser.add_argument("--workspace-root", type=Path, default=REPOSITORY_ROOT)
     parser.add_argument("--data-panel", type=Path, default=None)
     parser.add_argument("--stock-basic", type=Path, default=None)
     parser.add_argument("--shenwan-universe", type=Path, default=None)
     parser.add_argument("--archived-figure3-dir", type=Path, default=None)
-    parser.add_argument("--part8-baseline-gate", type=Path, default=None)
+    parser.add_argument("--operator-baseline-gate", type=Path, default=None)
     parser.add_argument("--output-dir", type=Path, required=True)
     parser.add_argument("--baseline-only", action="store_true")
     parser.add_argument("--levels", type=int, nargs="+", default=[2, 3, 4, 5, 6])
@@ -102,10 +102,10 @@ def resolve_paths(args: argparse.Namespace) -> ResolvedPaths:
             "analysis/waveclust_dense_signed_full_grid_20260525/"
             "ca4_cd1234_spearman_matrices_20260527",
         ),
-        part8_baseline_gate=_resolve(
+        operator_baseline_gate=_resolve(
             root,
-            args.part8_baseline_gate,
-            "output/revision_experiments/part8_operator_ablation/formal/baseline_gate.json",
+            args.operator_baseline_gate,
+            "output/supplementary/operator_ablation/formal/baseline_gate.json",
         ),
         output_dir=_resolve(root, args.output_dir, str(args.output_dir)),
     )
@@ -329,14 +329,14 @@ def validate_archived_figure3(
     }
 
 
-def validate_part8_gate(path: Path, *, formal: bool) -> dict[str, Any]:
+def validate_operator_gate(path: Path, *, formal: bool) -> dict[str, Any]:
     if not formal:
         return {"passed": None, "status": "smoke_not_formal"}
     if not path.exists():
-        raise FileNotFoundError(f"formal Part 3 requires the accepted Part 8 baseline gate: {path}")
+        raise FileNotFoundError(f"formal common-factor controls require the accepted operator baseline gate: {path}")
     payload = json.loads(path.read_text(encoding="utf-8"))
     if payload.get("passed") is not True:
-        raise RuntimeError(f"Part 8 reference gate is not accepted: {payload}")
+        raise RuntimeError(f"operator reference gate is not accepted: {payload}")
     return payload
 
 
@@ -380,7 +380,7 @@ def run_cluster_partition(
     possible_edges = len(labels) * (len(labels) - 1) / 2
     edge_count = int(np.count_nonzero(score) // 2)
     row = {
-        "experiment": "part3_common_factor_controls",
+        "experiment": "common_factor_controls",
         "branch": branch,
         "level": int(level),
         "wavelet": "sym2",
@@ -442,7 +442,7 @@ def main(argv: list[str] | None = None) -> int:
     if invalid_levels:
         raise ValueError(f"levels must be in [2, 6], got {invalid_levels}")
     if int(args.seed) != 42:
-        raise ValueError("Part 3 formal/smoke runs use the preregistered seed 42")
+        raise ValueError("common-factor control runs use the preregistered seed 42")
     if int(args.dependence_bins) < 2:
         raise ValueError("dependence-bins must be at least two")
 
@@ -456,13 +456,13 @@ def main(argv: list[str] | None = None) -> int:
     external_gate: dict[str, Any] = {"passed": None, "status": "not_checked"}
     manifest: dict[str, Any] = {
         "run_id": paths.output_dir.name,
-        "experiment": "part3_common_factor_controls",
+        "experiment": "common_factor_controls",
         "started_at": datetime.fromtimestamp(started).astimezone().isoformat(),
         "command": " ".join(sys.argv if argv is None else [sys.argv[0], *argv]),
         "paths": asdict(paths),
         "formal": formal,
         "environment": environment_snapshot(),
-        "part8_reference_gate": external_gate,
+        "operator_reference_gate": external_gate,
         "contract": {
             "levels": sorted(set(int(level) for level in args.levels)),
             "main_branches": list(MAIN_BRANCHES),
@@ -485,33 +485,33 @@ def main(argv: list[str] | None = None) -> int:
     }
     write_json(paths.output_dir / "run_manifest.json", manifest)
     try:
-        external_gate = validate_part8_gate(paths.part8_baseline_gate, formal=formal)
+        external_gate = validate_operator_gate(paths.operator_baseline_gate, formal=formal)
     except (FileNotFoundError, RuntimeError) as exc:
         write_json(
             paths.output_dir / "evidence_index.json",
             {
-                "reviewer_item": "Part3",
+                "supplement": "common_factor_controls",
                 "experiment": "hierarchical_common_factor_controls",
-                "part8_reference_gate": str(paths.part8_baseline_gate),
-                "candidate_placement": ["main_text", "appendix", "rebuttal_message"],
-                "status": "blocked_part8_reference_gate",
+                "operator_reference_gate": str(paths.operator_baseline_gate),
+                "candidate_placement": ["main_text", "appendix", "supplementary_materials"],
+                "status": "blocked_operator_reference_gate",
                 "blocker": str(exc),
             },
         )
-        manifest["part8_reference_gate"] = {"passed": False, "error": str(exc)}
+        manifest["operator_reference_gate"] = {"passed": False, "error": str(exc)}
         manifest["failures"].append(
             {
-                "stage": "part8_reference_gate",
+                "stage": "operator_reference_gate",
                 "reason": str(exc),
             }
         )
-        manifest["status"] = "blocked_part8_reference_gate"
+        manifest["status"] = "blocked_operator_reference_gate"
         manifest["finished_at"] = datetime.now().astimezone().isoformat()
         manifest["seconds"] = float(time.time() - started)
         manifest["artifacts"] = ["evidence_index.json"]
         write_json(paths.output_dir / "run_manifest.json", manifest)
         raise
-    manifest["part8_reference_gate"] = external_gate
+    manifest["operator_reference_gate"] = external_gate
     write_json(paths.output_dir / "run_manifest.json", manifest)
 
     prices = load_price_panel(
@@ -530,7 +530,7 @@ def main(argv: list[str] | None = None) -> int:
     if not formal:
         prices = prices.iloc[:, : int(args.smoke_stocks)].copy()
     if formal and int(prices.shape[1]) != 2773:
-        raise RuntimeError(f"formal Part 3 requires exactly 2773 stocks after raw filtering, got {prices.shape[1]}")
+        raise RuntimeError(f"formal common-factor controls require exactly 2773 stocks after raw filtering, got {prices.shape[1]}")
 
     stock_info = load_stock_basic(paths.stock_basic)
     universe = select_factor_common_universe(prices, stock_info, min_industry_size=2)
@@ -597,11 +597,11 @@ def main(argv: list[str] | None = None) -> int:
         write_json(
             paths.output_dir / "evidence_index.json",
             {
-                "reviewer_item": "Part3",
+                "supplement": "common_factor_controls",
                 "experiment": "hierarchical_common_factor_controls",
-                "part8_reference_gate": str(paths.part8_baseline_gate),
+                "operator_reference_gate": str(paths.operator_baseline_gate),
                 "figure3_reference_gate": str(paths.output_dir / "figure3_baseline_gate.json"),
-                "candidate_placement": ["main_text", "appendix", "rebuttal_message"],
+                "candidate_placement": ["main_text", "appendix", "supplementary_materials"],
                 "status": "blocked_figure3_reference_gate",
                 "blocker": "The current data lineage does not reproduce the archived raw Figure 3 reference.",
             },
@@ -609,7 +609,7 @@ def main(argv: list[str] | None = None) -> int:
         manifest["failures"].append(
             {
                 "stage": "figure3_reference_gate",
-                "reason": "Part 3 raw Figure 3 baseline did not reproduce the archived matrices and diagnostics",
+                "reason": "the raw Figure 3 baseline did not reproduce the archived matrices and diagnostics",
             }
         )
         manifest["status"] = "blocked_figure3_reference_gate"
@@ -617,7 +617,7 @@ def main(argv: list[str] | None = None) -> int:
         manifest["seconds"] = float(time.time() - started)
         manifest["artifacts"] = ["figure3_baseline_gate.json", "evidence_index.json", "figure3/"]
         write_json(paths.output_dir / "run_manifest.json", manifest)
-        raise RuntimeError(f"Part 3 Figure 3 reference gate failed: {figure3_gate}")
+        raise RuntimeError(f"Figure 3 reference gate failed: {figure3_gate}")
     if args.baseline_only:
         pd.DataFrame(raw_original_matrix_rows).to_csv(
             paths.output_dir / "figure3" / "band_matrix_summary.csv",
@@ -800,7 +800,7 @@ def main(argv: list[str] | None = None) -> int:
             row["assignments_path"] = str(assignment_path)
             rows.append(row)
             print(
-                f"__DS_PROGRESS__ {json.dumps({'experiment': 'part3', 'branch': branch, 'level': level, 'SW1_ari': row['SW1_ari']})}",
+                f"__DS_PROGRESS__ {json.dumps({'experiment': 'common_factor_controls', 'branch': branch, 'level': level, 'SW1_ari': row['SW1_ari']})}",
                 flush=True,
             )
             del similarities
@@ -814,9 +814,9 @@ def main(argv: list[str] | None = None) -> int:
         )
 
     evidence_index = {
-        "reviewer_item": "Part3",
+        "supplement": "common_factor_controls",
         "experiment": "hierarchical_common_factor_controls",
-        "part8_reference_gate": str(paths.part8_baseline_gate),
+        "operator_reference_gate": str(paths.operator_baseline_gate),
         "figure3_reference_gate": str(paths.output_dir / "figure3_baseline_gate.json"),
         "figure3_summary": str(paths.output_dir / "figure3" / "summary.csv"),
         "level_metrics": str(metrics_path),
@@ -848,16 +848,16 @@ def main(argv: list[str] | None = None) -> int:
                 summary["branch"]: float(summary["mean_off_diagonal_spearman"])
                 for summary in figure3_summaries
             },
-            "phase1_claim": (
+            "supplementary_claim": (
                 "Cross-frequency dependence overlap only; title-level common-factor conclusions require the "
-                "preregistered Phase 2 robustness evidence."
+                "the additional preregistered robustness evidence."
             ),
         },
-        "candidate_placement": ["main_text", "appendix", "rebuttal_message"],
+        "candidate_placement": ["main_text", "appendix", "supplementary_materials"],
         "status": "complete" if len(metrics) == len(args.levels) * len(MAIN_BRANCHES) else "partial",
         "claim_status": (
-            "Phase 1 reports cross-frequency dependence overlap only; the preregistered title-level claim requires "
-            "Phase 2 bootstrap, bin robustness, and single-band partition evidence."
+            "The common-factor controls report cross-frequency dependence overlap only; the title-level claim also "
+            "requires bootstrap, bin-robustness, and single-band partition evidence."
         ),
     }
     write_json(paths.output_dir / "evidence_index.json", evidence_index)

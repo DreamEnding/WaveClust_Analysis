@@ -32,7 +32,7 @@ from waveclust.spectral import (
 )
 
 
-FINANCE_ROOT = Path(__file__).resolve().parent.parent
+REPOSITORY_ROOT = Path(__file__).resolve().parent.parent
 OPERATOR_CONFIGS: dict[str, tuple[str, bool]] = {
     "max_weighted": ("max", True),
     "mean_weighted": ("mean", True),
@@ -66,8 +66,8 @@ class ResolvedPaths:
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Run the preregistered Part 8 signed-dual operator ablation.")
-    parser.add_argument("--workspace-root", type=Path, default=FINANCE_ROOT)
+    parser = argparse.ArgumentParser(description="Run the supplementary signed-dual operator ablation.")
+    parser.add_argument("--workspace-root", type=Path, default=REPOSITORY_ROOT)
     parser.add_argument("--data-panel", type=Path, default=None)
     parser.add_argument("--shenwan-universe", type=Path, default=None)
     parser.add_argument("--archived-assignment", type=Path, default=None)
@@ -259,7 +259,7 @@ def run_operator_partition(
     possible_edges = len(labels) * (len(labels) - 1) / 2
     edge_count = int(np.count_nonzero(score) // 2)
     row = {
-        "experiment": "part8_operator_ablation",
+        "experiment": "operator_ablation",
         "level": int(level),
         "operator": operator,
         "reducer": reducer,
@@ -369,7 +369,7 @@ def main(argv: list[str] | None = None) -> int:
     if invalid_levels:
         raise ValueError(f"levels must be in [2, 6], got {invalid_levels}")
     if int(args.seed) != 42:
-        raise ValueError("Part 8 formal/smoke runs use the preregistered seed 42")
+        raise ValueError("operator-ablation runs use the preregistered seed 42")
     paths = resolve_paths(args)
     paths.output_dir.mkdir(parents=True, exist_ok=True)
     metrics_path = paths.output_dir / "metrics.csv"
@@ -382,7 +382,7 @@ def main(argv: list[str] | None = None) -> int:
     formal = int(args.smoke_stocks) <= 0
     manifest = {
         "run_id": paths.output_dir.name,
-        "experiment": "part8_operator_ablation",
+        "experiment": "operator_ablation",
         "started_at": datetime.fromtimestamp(started).astimezone().isoformat(),
         "command": " ".join(sys.argv if argv is None else [sys.argv[0], *argv]),
         "paths": asdict(paths),
@@ -428,7 +428,7 @@ def main(argv: list[str] | None = None) -> int:
     if not formal:
         prices = prices.iloc[:, : int(args.smoke_stocks)].copy()
     if formal and int(prices.shape[1]) != 2773:
-        raise RuntimeError(f"formal Part 8 requires exactly 2773 stocks after filtering, got {prices.shape[1]}")
+        raise RuntimeError(f"the formal operator ablation requires exactly 2773 stocks after filtering, got {prices.shape[1]}")
     returns = preprocess_returns_no_metadata(
         prices,
         winsor_limit=0.03,
@@ -477,12 +477,12 @@ def main(argv: list[str] | None = None) -> int:
         write_json(
             paths.output_dir / "evidence_index.json",
             {
-                "reviewer_item": "Part8",
+                "supplement": "operator_ablation",
                 "experiment": "maximum_operator_ablation",
                 "baseline_gate": str(paths.output_dir / "baseline_gate.json"),
                 "metrics": str(metrics_path),
                 "assignments": str(assignments_dir),
-                "candidate_placement": ["appendix", "rebuttal_message"],
+                "candidate_placement": ["appendix", "supplementary_materials"],
                 "status": "blocked_reference_gate",
                 "blocker": "The current data lineage does not reproduce the archived J=2 reference.",
             },
@@ -490,7 +490,7 @@ def main(argv: list[str] | None = None) -> int:
         manifest["failures"].append(
             {
                 "stage": "reference_gate",
-                "reason": "Part 8 reference baseline did not reproduce the archived partition and metrics",
+                "reason": "the operator reference baseline did not reproduce the archived partition and metrics",
             }
         )
         manifest["status"] = "blocked_reference_gate"
@@ -498,7 +498,7 @@ def main(argv: list[str] | None = None) -> int:
         manifest["seconds"] = float(time.time() - started)
         manifest["artifacts"] = ["metrics.csv", "baseline_gate.json", "evidence_index.json", "assignments/"]
         write_json(paths.output_dir / "run_manifest.json", manifest)
-        raise RuntimeError(f"Part 8 reference gate failed: {gate}")
+        raise RuntimeError(f"operator reference gate failed: {gate}")
     if args.baseline_only:
         pd.DataFrame([baseline_row]).to_csv(metrics_path, index=False, encoding="utf-8-sig")
         manifest["finished_at"] = datetime.now().astimezone().isoformat()
@@ -548,7 +548,7 @@ def main(argv: list[str] | None = None) -> int:
                 row["assignments_path"] = str(assignment_path)
             rows.append(row)
             print(
-                f"__DS_PROGRESS__ {json.dumps({'experiment': 'part8', 'level': level, 'operator': operator, 'SW1_ari': row['SW1_ari']})}",
+                f"__DS_PROGRESS__ {json.dumps({'experiment': 'operator_ablation', 'level': level, 'operator': operator, 'SW1_ari': row['SW1_ari']})}",
                 flush=True,
             )
         del score_cache, sim_mats
@@ -565,7 +565,7 @@ def main(argv: list[str] | None = None) -> int:
     monotonicity = monotonicity_summary(metrics)
     monotonicity.to_csv(paths.output_dir / "monotonicity.csv", index=False, encoding="utf-8-sig")
     evidence_index = {
-        "reviewer_item": "Part8",
+        "supplement": "operator_ablation",
         "experiment": "maximum_operator_ablation",
         "baseline_gate": str(paths.output_dir / "baseline_gate.json"),
         "metrics": str(metrics_path),
@@ -593,7 +593,7 @@ def main(argv: list[str] | None = None) -> int:
         "key_conclusion": {
             "SW1_ari_level_decay_classification": monotonicity.set_index("operator")["classification"].to_dict(),
         },
-        "candidate_placement": ["appendix", "rebuttal_message"],
+        "candidate_placement": ["appendix", "supplementary_materials"],
         "status": "complete" if len(metrics) == len(requested_levels) * len(args.operators) else "partial",
     }
     write_json(paths.output_dir / "evidence_index.json", evidence_index)

@@ -159,7 +159,7 @@ def main() -> int:
 
     print("Loading price panel and stock metadata once for the whole sweep...")
     prices = load_prices(base_config, start_date=args.start_date, end_date=args.end_date)
-    stock_info = load_stock_basic(resolve_workspace_path(base_config.get("data", {}).get("stock_basic_path", "Finance/DATA/stock_basic.csv")))
+    stock_info = load_stock_basic(resolve_workspace_path(base_config.get("data", {}).get("stock_basic_path", "DATA/stock_basic.csv")))
 
     for level in args.levels:
         pending: list[tuple[float, str, Path, Path]] = []

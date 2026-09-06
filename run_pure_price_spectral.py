@@ -396,7 +396,7 @@ def main() -> int:
         max_flat_return_rate=args.max_flat_return_rate,
         min_stocks=int(args.min_eligible_stocks),
     )
-    universe_path = resolve_workspace_path("Finance/DATA/tickflow_universes/universe_list.json")
+    universe_path = resolve_workspace_path("DATA/tickflow_universes/universe_list.json")
     label_tables = {level: load_shenwan_label_table(universe_path, level=level) for level in SW_LEVELS}
 
     write_json(

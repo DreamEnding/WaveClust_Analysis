@@ -7,7 +7,7 @@ from waveclust.pipeline import run_experiment
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Run the cleaned 4.29 WaveClust legacy experiment.")
+    parser = argparse.ArgumentParser(description="Run one WaveClust experiment.")
     parser.add_argument("--config", type=Path, default=Path(__file__).resolve().parent / "config.yaml")
     parser.add_argument("--output-dir", type=Path, required=True)
     parser.add_argument("--start-date", type=str, default=None)
@@ -30,4 +30,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

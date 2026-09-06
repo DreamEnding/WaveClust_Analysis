@@ -54,8 +54,8 @@ class StockWaveClust:
         stock_info: pd.DataFrame | None,
         params: WaveClustParams,
     ) -> None:
-        if int(params.levels) < 2 or int(params.levels) > 6:
-            raise ValueError(f"wavelet levels must be in [2, 6], got {params.levels}")
+        if int(params.levels) < 1 or int(params.levels) > 6:
+            raise ValueError(f"wavelet levels must be in [1, 6], got {params.levels}")
         if params.wavelet_transform.strip().lower() not in {"modwt", "swt", "dwt", "wavedec"}:
             raise ValueError(f"unsupported wavelet transform: {params.wavelet_transform}; use modwt or dwt")
         self.prices = prices

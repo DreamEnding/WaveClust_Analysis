@@ -136,7 +136,7 @@ def build_signed_dual_waveclust_score(
 class SignedDualScoreCache:
     """Reuse signed-dual interaction terms across several score reducers.
 
-    The cache is intended for a bounded batch such as Part 8's six
+    The cache is intended for a bounded batch such as the supplementary
     preregistered reducers at one wavelet level.  It stores one float32
     ``detail × stock × stock`` tensor, trading bounded host memory for avoiding
     repeated positive/negative splitting and square-root interactions.
