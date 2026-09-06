@@ -1,29 +1,29 @@
 # WaveClust Analysis
 
-本仓库提供论文 *Cross-Frequency Redundancy in the Chinese A-Share Dependence Network* 的核心算法、实验入口与补充分析代码。
+This repository contains the core algorithms, experiment entry points, and supplementary analyses for the paper *Cross-Frequency Redundancy in the Chinese A-Share Dependence Network*.
 
-## 目录结构
+## Repository layout
 
 ```text
 .
-├── waveclust/                         核心算法包
-├── supplementary/                    补充分析
-│   ├── run_operator_ablation.py       聚合算子消融
-│   ├── run_common_factor_controls.py  共同因子控制
-│   └── run_single_level_analysis.py   单层 MODWT 分析
-├── tests/                             补充分析单元测试
-├── config.yaml                        默认实验配置
-├── run_experiment.py                  单次 WaveClust 实验
-├── run_level_sweep.py                 分解层级与 MCL 参数扫描
-├── run_pure_price_spectral.py         纯价格谱聚类实验
-└── combine_pure_price_results.py      合并分片实验结果
+├── waveclust/                         Core algorithm package
+├── supplementary/                    Supplementary analyses
+│   ├── run_operator_ablation.py       Aggregation-operator ablation
+│   ├── run_common_factor_controls.py  Common-factor controls
+│   └── run_single_level_analysis.py   Single-level MODWT analysis
+├── tests/                             Tests for supplementary analyses
+├── config.yaml                        Default experiment configuration
+├── run_experiment.py                  Single WaveClust experiment
+├── run_level_sweep.py                 Level and MCL-parameter sweep
+├── run_pure_price_spectral.py         Pure-price spectral clustering
+└── combine_pure_price_results.py      Merge sharded experiment results
 ```
 
-`waveclust` 包含数据加载、预处理、MODWT/SWT 分解、相似度构建、MCL 与谱聚类、申万行业标签评估等实现。补充目录使用描述实验内容的名称，不依赖内部开发阶段编号。
+The `waveclust` package implements data loading, preprocessing, MODWT/SWT decomposition, similarity construction, MCL and spectral clustering, and evaluation against Shenwan industry labels.
 
-## 环境
+## Installation
 
-建议使用 Python 3.10 或更高版本：
+Python 3.10 or later is recommended.
 
 ```powershell
 python -m venv .venv
@@ -31,47 +31,49 @@ python -m venv .venv
 python -m pip install -r requirements.txt
 ```
 
-运行测试还需安装：
+Install the development dependencies to run the test suite:
 
 ```powershell
 python -m pip install -r requirements-dev.txt
 ```
 
-GPU 加速为可选功能。根据本机 CUDA 版本另行安装对应的 CuPy 包；不安装时可通过 `--no-gpu` 使用 CPU。
+GPU acceleration is optional. Install the CuPy package that matches your local CUDA version to enable it. All experiment entry points that support GPU execution also provide `--no-gpu` for CPU-only runs.
 
-## 数据准备
+## Data preparation
 
-默认配置从仓库根目录下的 `DATA/` 读取：
+The default configuration reads data from `DATA/` at the repository root:
 
 ```text
 DATA/
-├── stock_price_panel.csv              日期 × 股票的收盘价面板
-├── stock_basic.csv                    股票基础信息
-├── trade_cal.csv                      交易日历
-├── K/                                 按股票拆分的日行情 CSV
+├── stock_price_panel.csv              Date-by-stock closing-price panel
+├── stock_basic.csv                    Stock metadata
+├── trade_cal.csv                      Trading calendar
+├── K/                                 One daily-price CSV per stock
 └── tickflow_universes/
-    └── universe_list.json             申万行业标签
+    └── universe_list.json             Shenwan industry labels
 ```
 
-价格面板首列为日期索引，其余列为股票代码。也可在 `config.yaml` 或各命令行参数中指定其他路径。若同目录存在 `stock_price_panel.parquet`，默认优先读取 Parquet；此时需要安装 `pyarrow` 或 `fastparquet`。
+The first column of `stock_price_panel.csv` must contain the date index; each remaining column represents one stock. Data paths can be changed in `config.yaml` or overridden with the command-line options exposed by each entry point.
 
-原始行情数据受数据提供方许可约束，不随代码仓库分发。
+If `stock_price_panel.parquet` exists beside the CSV file, the loader prefers the Parquet file. Reading Parquet requires either `pyarrow` or `fastparquet`.
 
-## 核心实验
+Raw market data is not distributed with this repository because it is subject to the data provider's licensing terms.
 
-运行单次实验：
+## Core experiments
+
+Run one WaveClust experiment:
 
 ```powershell
 python run_experiment.py --output-dir output/example --no-gpu
 ```
 
-扫描小波层级和 MCL inflation：
+Sweep wavelet levels and MCL inflation values:
 
 ```powershell
 python run_level_sweep.py --output-root output/level_sweep --levels 2 3 4 5 6 --no-gpu
 ```
 
-运行论文使用的纯价格谱聚类配置示例：
+Run an example of the pure-price spectral-clustering configuration used in the paper:
 
 ```powershell
 python run_pure_price_spectral.py `
@@ -90,15 +92,15 @@ python run_pure_price_spectral.py `
   --no-gpu
 ```
 
-合并多个结果目录：
+Merge results from multiple run directories:
 
 ```powershell
 python combine_pure_price_results.py --input-root output/pure_price
 ```
 
-## 补充分析
+## Supplementary analyses
 
-补充入口均从仓库根目录以模块方式运行：
+Run supplementary entry points as modules from the repository root:
 
 ```powershell
 python -m supplementary.run_operator_ablation --output-dir output/supplementary/operator_ablation --no-gpu
@@ -106,17 +108,13 @@ python -m supplementary.run_common_factor_controls --output-dir output/supplemen
 python -m supplementary.run_single_level_analysis --output-dir output/supplementary/single_level
 ```
 
-算子消融会生成基线校验文件；共同因子控制默认读取该文件。单层分析默认读取共同因子控制的正式结果。所有输入路径都可通过对应命令的 `--help` 查看和覆盖。
+The operator ablation produces a baseline-validation file that the common-factor controls read by default. The single-level analysis reads the completed common-factor-control run. Use `--help` on any entry point to view and override its input paths.
 
-## 验证
+## Verification
 
 ```powershell
 python -m pytest -q
 python -m compileall -q waveclust supplementary
 ```
 
-## 版本来源
-
-核心实现来自 2026-05-25 论文网格实验所使用的代码快照。当前版本在该快照基础上移除了本地绝对路径，统一了公开目录和命名，并加入算子消融、共同因子控制及单层分解所需的最小扩展。
-
-如使用本代码，请引用对应论文。代码供学术研究使用；其他用途请联系作者。
+Please cite the corresponding paper when using this code. The code is provided for academic research; contact the authors regarding other uses.
