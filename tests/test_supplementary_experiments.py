@@ -6,9 +6,9 @@ import numpy as np
 import pandas as pd
 import pytest
 
-import run_rebuttal_part3 as part3_runner
-from run_rebuttal_part8 import parse_args as parse_part8_args
-from run_rebuttal_part3 import band_names, parse_args as parse_part3_args
+import supplementary.run_common_factor_controls as common_factor_runner
+from supplementary.run_common_factor_controls import band_names, parse_args as parse_common_factor_args
+from supplementary.run_operator_ablation import parse_args as parse_operator_args
 from waveclust.dependence import rank_normalize_rows_for_spearman, summarize_cross_band_dependence
 from waveclust.factors import prepare_factor_branches, select_factor_common_universe
 from waveclust.model import StockWaveClust, WaveClustParams
@@ -261,8 +261,8 @@ def test_factor_common_universe_excludes_missing_and_singleton_industries() -> N
     }
 
 
-def test_part8_runner_accepts_explicit_workspace_data_and_output_paths(tmp_path) -> None:
-    args = parse_part8_args(
+def test_operator_runner_accepts_explicit_workspace_data_and_output_paths(tmp_path) -> None:
+    args = parse_operator_args(
         [
             "--workspace-root",
             str(tmp_path),
@@ -325,8 +325,8 @@ def test_rank_normalization_turns_row_dot_products_into_spearman_correlation() -
     assert np.allclose(similarity, np.array([[1.0, -1.0], [-1.0, 1.0]]), atol=1e-7)
 
 
-def test_part3_runner_accepts_explicit_workspace_data_and_output_paths(tmp_path) -> None:
-    args = parse_part3_args(
+def test_common_factor_runner_accepts_explicit_workspace_data_and_output_paths(tmp_path) -> None:
+    args = parse_common_factor_args(
         [
             "--workspace-root",
             str(tmp_path),
@@ -338,7 +338,7 @@ def test_part3_runner_accepts_explicit_workspace_data_and_output_paths(tmp_path)
             str(tmp_path / "labels.json"),
             "--archived-figure3-dir",
             str(tmp_path / "figure3"),
-            "--part8-baseline-gate",
+            "--operator-baseline-gate",
             str(tmp_path / "baseline_gate.json"),
             "--output-dir",
             str(tmp_path / "outputs"),
@@ -357,15 +357,15 @@ def test_part3_runner_accepts_explicit_workspace_data_and_output_paths(tmp_path)
     assert args.gpu_ids == [2, 3]
 
 
-def test_part3_runner_records_a_part8_gate_blocker(tmp_path, monkeypatch) -> None:
-    output_dir = tmp_path / "part3"
+def test_common_factor_runner_records_an_operator_gate_blocker(tmp_path, monkeypatch) -> None:
+    output_dir = tmp_path / "common_factor_controls"
 
-    def reject_part8_gate(*_args, **_kwargs):
-        raise RuntimeError("Part 8 reference gate rejected for test")
+    def reject_operator_gate(*_args, **_kwargs):
+        raise RuntimeError("operator reference gate rejected for test")
 
-    monkeypatch.setattr(part3_runner, "validate_part8_gate", reject_part8_gate)
+    monkeypatch.setattr(common_factor_runner, "validate_operator_gate", reject_operator_gate)
     with pytest.raises(RuntimeError, match="rejected for test"):
-        part3_runner.main(
+        common_factor_runner.main(
             [
                 "--workspace-root",
                 str(tmp_path),
@@ -376,20 +376,42 @@ def test_part3_runner_records_a_part8_gate_blocker(tmp_path, monkeypatch) -> Non
 
     manifest = json.loads((output_dir / "run_manifest.json").read_text(encoding="utf-8"))
     evidence_index = json.loads((output_dir / "evidence_index.json").read_text(encoding="utf-8"))
-    assert manifest["status"] == "blocked_part8_reference_gate"
-    assert manifest["part8_reference_gate"]["passed"] is False
+    assert manifest["status"] == "blocked_operator_reference_gate"
+    assert manifest["operator_reference_gate"]["passed"] is False
     assert manifest["failures"] == [
         {
-            "stage": "part8_reference_gate",
-            "reason": "Part 8 reference gate rejected for test",
+            "stage": "operator_reference_gate",
+            "reason": "operator reference gate rejected for test",
         }
     ]
-    assert evidence_index["status"] == "blocked_part8_reference_gate"
-    assert evidence_index["blocker"] == "Part 8 reference gate rejected for test"
+    assert evidence_index["status"] == "blocked_operator_reference_gate"
+    assert evidence_index["blocker"] == "operator reference gate rejected for test"
 
 
-def test_part3_band_order_matches_pywavelets_trimmed_swt_contract() -> None:
+def test_common_factor_band_order_matches_pywavelets_trimmed_swt_contract() -> None:
     assert band_names(4) == ["CA4", "CD4", "CD3", "CD2", "CD1"]
+
+
+def test_common_factor_level_one_builds_ca1_and_cd1_similarity_matrices(tmp_path) -> None:
+    args = parse_common_factor_args(["--output-dir", str(tmp_path), "--levels", "1", "--no-gpu"])
+    returns = pd.DataFrame(
+        np.random.default_rng(42).normal(size=(32, 5)).astype(np.float32),
+        columns=[f"stock_{index}" for index in range(5)],
+    )
+
+    similarities, stock_names, _ = common_factor_runner.build_band_similarities(
+        returns,
+        args,
+        level=1,
+        wavelet="sym2",
+        spearman=False,
+        use_gpu=False,
+    )
+
+    assert band_names(1) == ["CA1", "CD1"]
+    assert stock_names == returns.columns.tolist()
+    assert len(similarities) == 2
+    assert all(matrix.shape == (5, 5) for matrix in similarities)
 
 
 def test_prepare_level_matrices_preserves_legacy_row_order_and_can_release_coefficients() -> None:
